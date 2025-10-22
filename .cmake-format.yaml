@@ -1,0 +1,4 @@
+tab_size: 4
+line_width: 100
+keyword_case: upper
+separate_ctrl_name_with_space: true

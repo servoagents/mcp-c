@@ -1,0 +1,20 @@
+manifest:
+  defaults:
+    remote: zephyrproject
+
+  remotes:
+    - name: zephyrproject
+      url-base: https://github.com/zephyrproject-rtos
+
+  projects:
+    - name: zephyr
+      remote: zephyrproject
+      repo-path: zephyr
+      revision: v4.2.1
+      # Checkout Zephyr under the app folder to avoid name/path collisions
+      path: zephyr
+      import: true
+
+  self:
+    # Place the manifest (this app) under the workspace top at this relative path
+    path: .

@@ -1,0 +1,13 @@
+# Ignore all build/ directories
+build/
+
+# MCP Python virtual environment
+.venv/
+
+# Zephyr
+examples/zephyr/mcp_server/.west/
+examples/zephyr/mcp_server/bootloader/
+examples/zephyr/mcp_server/modules/
+examples/zephyr/mcp_server/tools/
+examples/zephyr/mcp_server/zephyr/
+examples/zephyr/mcp_server/.west/

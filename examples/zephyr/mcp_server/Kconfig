@@ -1,0 +1,6 @@
+# Pull in Zephyr's Kconfig tree so standard symbols are available to the app
+source "Kconfig.zephyr"
+
+menu "MCP Zephyr App"
+
+endmenu

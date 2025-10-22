@@ -6,9 +6,27 @@
 #include "mcp.h"
 #include "wifi.h"
 #include <zephyr/net/net_ip.h>
-#include <zephyr/net/socket.h>
+#include <zephyr/net/net_if.h>
+#include <zephyr/net/net_mgmt.h>
 
 LOG_MODULE_REGISTER(mcp_zephyr_app, LOG_LEVEL_INF);
+
+/* IPv4 address event-based logger */
+static struct net_mgmt_event_callback ipv4_cb;
+
+static void ipv4_event_handler(struct net_mgmt_event_callback *cb, uint64_t event,
+                               struct net_if *iface) {
+    ARG_UNUSED(cb);
+    if (event != NET_EVENT_IPV4_ADDR_ADD) {
+        return;
+    }
+    struct in_addr *addr = net_if_ipv4_get_global_addr(iface, NET_ADDR_PREFERRED);
+    if (addr && addr->s_addr != 0) {
+        char ipbuf[NET_IPV4_ADDR_LEN];
+        net_addr_ntop(AF_INET, addr, ipbuf, sizeof(ipbuf));
+        LOG_INF("WiFi IPv4 address: %s", ipbuf);
+    }
+}
 
 static int handle_initialize(struct mcp_session *s, const mcp_message_t *req, char *resp,
                              size_t cap) {
@@ -58,27 +76,19 @@ int main(void) {
         return 0;
     }
 
-    /* Print assigned IPv4 address via UDP getsockname trick */
-    do {
-        int s = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-        if (s >= 0) {
-            struct sockaddr_in dst = {0};
-            dst.sin_family = AF_INET;
-            dst.sin_port = htons(53);
-            /* Public DNS; only used to select route, no packets sent */
-            inet_pton(AF_INET, "8.8.8.8", &dst.sin_addr);
-            if (connect(s, (struct sockaddr *) &dst, sizeof(dst)) == 0) {
-                struct sockaddr_in src = {0};
-                socklen_t slen = sizeof(src);
-                if (getsockname(s, (struct sockaddr *) &src, &slen) == 0) {
-                    char ipbuf[NET_IPV4_ADDR_LEN];
-                    net_addr_ntop(AF_INET, &src.sin_addr, ipbuf, sizeof(ipbuf));
-                    LOG_INF("WiFi IPv4 address: %s", ipbuf);
-                }
-            }
-            (void) close(s);
+    /* Log IPv4 once DHCP completes using a net_mgmt event callback. */
+    net_mgmt_init_event_callback(&ipv4_cb, ipv4_event_handler, NET_EVENT_IPV4_ADDR_ADD);
+    net_mgmt_add_event_callback(&ipv4_cb);
+    /* If DHCP already completed, log immediately. */
+    {
+        struct in_addr *addr =
+            net_if_ipv4_get_global_addr(net_if_get_default(), NET_ADDR_PREFERRED);
+        if (addr && addr->s_addr != 0) {
+            char ipbuf[NET_IPV4_ADDR_LEN];
+            net_addr_ntop(AF_INET, addr, ipbuf, sizeof(ipbuf));
+            LOG_INF("WiFi IPv4 address: %s", ipbuf);
         }
-    } while (0);
+    }
 
     mcp_server_config_t cfg = {
         .transport = mcp_transport_http(),

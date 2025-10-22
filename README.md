@@ -35,23 +35,7 @@ cmake --build . --config Release
 ./examples/linux/mcp_server/mcp-linux-mcp_server
 ```
 
-The server listens on <http://0.0.0.0:8080>.
-
-Test with curl:
-
-```bash
-# Initialize the session and get capabilities/protocol version
-curl -s -X POST http://localhost:8080 -H 'Content-Type: application/json' \
-  -d '{"jsonrpc":"2.0","id":"1","method":"initialize","params":{}}'
-
-# List available tools exposed by the server
-curl -s -X POST http://localhost:8080 -H 'Content-Type: application/json' \
-  -d '{"jsonrpc":"2.0","id":"2","method":"tools/list","params":{}}'
-
-# Call the "echo" tool; this demo returns a fixed greeting
-curl -s -X POST http://localhost:8080 -H 'Content-Type: application/json' \
-  -d '{"jsonrpc":"2.0","id":"3","method":"tools/call","params":{"name":"echo","arguments":{"text":"hi"}}}'
-```
+The server listens on <http://0.0.0.0:8080>. See “Test with curl (Linux and Zephyr)” below.
 
 ### Zephyr
 
@@ -82,7 +66,30 @@ west espressif monitor
 
 The board-specific overlays/configs are placed under `examples/zephyr/mcp_server/boards/`.
 
-The app starts an HTTP server on port 8080. Ensure your board has networking configured (Ethernet or Wi‑Fi) and an IP address.
+The app starts an HTTP server on port 8080. Ensure your board has networking configured (Ethernet or Wi‑Fi) and an IP address. For testing convenience, the example logs its DHCP‑assigned IPv4 address after connecting so you can copy/paste it for curl; you can disable or change this in `examples/zephyr/mcp_server/src/main.c`. See “Test with curl (Linux and Zephyr)” below.
+
+### Test with curl (Linux and Zephyr)
+
+Use these requests against either:
+
+- Linux: <http://localhost:8080>
+- Zephyr: http://DEVICE_IP:8080 (replace DEVICE_IP with the IP printed by the device)
+
+```bash
+# Initialize the session and get capabilities/protocol version
+curl -s -X POST http://HOST:8080 -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":"1","method":"initialize","params":{}}'
+
+# List available tools exposed by the server
+curl -s -X POST http://HOST:8080 -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":"2","method":"tools/list","params":{}}'
+
+# Call the "echo" tool; this demo returns a fixed greeting
+curl -s -X POST http://HOST:8080 -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":"3","method":"tools/call","params":{"name":"echo","arguments":{"text":"hi"}}}'
+```
+
+Replace HOST with localhost (Linux) or the Zephyr device IP.
 
 ## Transports
 

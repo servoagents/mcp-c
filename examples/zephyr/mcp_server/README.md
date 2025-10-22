@@ -3,7 +3,7 @@
 This example connects to Wi‑Fi and starts an HTTP MCP server on port 8080.
 
 - Wi‑Fi credentials are provided via CMake definitions passed from the build script using environment variables `WIFI_SSID` and `WIFI_PASS`.
-- IP address is printed after connecting (using a UDP getsockname trick).
+- For testing purposes, the device logs its IPv4 address once DHCP completes. This helps you copy the IP for curl/tests. You can remove or modify this behavior in `src/main.c` (the small `net_mgmt` IPv4 event callback).
 
 Build and flash:
 
@@ -22,6 +22,6 @@ Once connected, test from your LAN:
 
 ```bash
 # Replace 192.168.x.x with the printed IP
-curl -s http://192.168.x.x:8080/mcp -H 'Content-Type: application/json' \
+curl -s http://192.168.x.x:8080 -H 'Content-Type: application/json' \
   -d '{"jsonrpc":"2.0","id":"1","method":"initialize","params":{}}'
 ```

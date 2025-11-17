@@ -1,0 +1,2 @@
+/* Device tree overlay for native_sim board */
+/* This is typically minimal for native_sim as it uses host networking */

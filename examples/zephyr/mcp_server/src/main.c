@@ -11,6 +11,7 @@
 
 LOG_MODULE_REGISTER(mcp_zephyr_app, LOG_LEVEL_INF);
 
+#ifdef CONFIG_WIFI
 /* IPv4 address event-based logger */
 static struct net_mgmt_event_callback ipv4_cb;
 
@@ -27,6 +28,7 @@ static void ipv4_event_handler(struct net_mgmt_event_callback *cb, uint64_t even
         LOG_INF("WiFi IPv4 address: %s", ipbuf);
     }
 }
+#endif
 
 static int handle_initialize(struct mcp_session *s, const mcp_message_t *req, char *resp,
                              size_t cap) {
@@ -65,6 +67,7 @@ static int handle_tools_call(struct mcp_session *s, const mcp_message_t *req, ch
 int main(void) {
     LOG_INF("Starting MCP Zephyr app (HTTP :8080)");
 
+#ifdef CONFIG_WIFI
     /* Initialize and connect WiFi before starting server */
     (void) wifi_init(NULL);
     if (connect_to_wifi() < 0) {
@@ -89,6 +92,19 @@ int main(void) {
             LOG_INF("WiFi IPv4 address: %s", ipbuf);
         }
     }
+#else
+    /* For native_sim, just log the configured IP */
+    LOG_INF("Running on native_sim - network interface ready");
+    struct net_if *iface = net_if_get_default();
+    if (iface) {
+        struct in_addr *addr = net_if_ipv4_get_global_addr(iface, NET_ADDR_PREFERRED);
+        if (addr && addr->s_addr != 0) {
+            char ipbuf[NET_IPV4_ADDR_LEN];
+            net_addr_ntop(AF_INET, addr, ipbuf, sizeof(ipbuf));
+            LOG_INF("IPv4 address: %s", ipbuf);
+        }
+    }
+#endif
 
     mcp_server_config_t cfg = {
         .transport = mcp_transport_http(),
@@ -107,6 +123,8 @@ int main(void) {
 
     mcp_server_run(srv);
     mcp_server_deinit(srv);
+#ifdef CONFIG_WIFI
     wifi_disconnect();
+#endif
     return 0;
 }

@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Simple build script for MCP Zephyr example
-# Assumes the west workspace top is mcp/examples and the manifest lives in mcp/examples/zephyr/mcp_server
+# Build script for MCP Zephyr example
+# Supports: ESP32, native_sim
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-# Use the Zephyr folder as the West workspace top to match manifest expectations
 WORKSPACE_TOP="${PROJECT_ROOT}/examples/zephyr"
 APP_DIR="${PROJECT_ROOT}/examples/zephyr/mcp_server"
 BOARD_TARGET=${BOARD_TARGET:-"esp32_devkitc/esp32/procpu"}
@@ -17,7 +16,19 @@ WIFI_SSID=""
 WIFI_PASS=""
 
 usage() {
-  echo "Usage: $0 [--init] [--clean] [-b <board>] [--wifi-ssid <ssid>] [--wifi-pass <pass>]"
+  echo "Usage: $0 [OPTIONS]"
+  echo ""
+  echo "Options:"
+  echo "  --init              Initialize/update Zephyr workspace"
+  echo "  --clean             Clean build directory"
+  echo "  -b <board>          Target board (default: esp32_devkitc/esp32/procpu)"
+  echo "  --wifi-ssid <ssid>  WiFi SSID (for ESP32)"
+  echo "  --wifi-pass <pass>  WiFi password (for ESP32)"
+  echo ""
+  echo "Examples:"
+  echo "  $0 --init                                           # Initialize workspace"
+  echo "  $0 -b native_sim                                    # Build for local testing"
+  echo "  $0 -b esp32_devkitc/esp32/procpu --wifi-ssid MySSID --wifi-pass MyPass"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -87,5 +98,10 @@ echo "Building MCP Zephyr app for board: ${BOARD_TARGET}"
 
 echo ""
 echo "Build complete!"
-echo "Flash: (from ${APP_DIR}) west flash"
-echo "Monitor: (from ${APP_DIR}) west espressif monitor"
+if [[ "${BOARD_TARGET}" == "native_sim" ]]; then
+  echo "Run: cd ${APP_DIR} && ./build/zephyr/zephyr.exe"
+  echo "Test: curl -s http://localhost:8080 -H 'Content-Type: application/json' -d '{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"method\":\"initialize\",\"params\":{}}'"
+else
+  echo "Flash: cd ${APP_DIR} && west flash"
+  echo "Monitor: cd ${APP_DIR} && west espressif monitor"
+fi

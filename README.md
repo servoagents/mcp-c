@@ -39,41 +39,34 @@ The server listens on <http://0.0.0.0:8080>. See “Test with curl (Linux and Ze
 
 ### Zephyr
 
-Prereqs: Zephyr SDK and Python with west installed.
-
-First create a Python virtual environment and install west
+#### ESP32 (WiFi)
 
 ```bash
+# Setup
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-```
 
-From the `mcp/` folder:
-
-```bash
+# Build and flash
 ./scripts/build-zephyr.sh --init
-./scripts/build-zephyr.sh -b esp32_devkitc_wroom/esp32/procpu --wifi-ssid "your_wifi_ssid" --wifi-pass "your_wifi_password"
+./scripts/build-zephyr.sh -b esp32_devkitc/esp32/procpu --wifi-ssid "SSID" --wifi-pass "PASS"
+cd examples/zephyr/mcp_server
+west flash && west espressif monitor
 ```
 
-Then flash and monitor:
+#### native_sim (Local Testing)
 
 ```bash
-cd examples/zephyr/mcp_server
-west flash
-west espressif monitor
+# Build and run
+./scripts/build-zephyr.sh -b native_sim
+./examples/zephyr/mcp_server/build/zephyr/zephyr.exe
 ```
 
-The board-specific overlays/configs are placed under `examples/zephyr/mcp_server/boards/`.
+Uses localhost:8080 with native offloaded sockets.
 
-The app starts an HTTP server on port 8080. Ensure your board has networking configured (Ethernet or Wi‑Fi) and an IP address. For testing convenience, the example logs its DHCP‑assigned IPv4 address after connecting so you can copy/paste it for curl; you can disable or change this in `examples/zephyr/mcp_server/src/main.c`. See “Test with curl (Linux and Zephyr)” below.
+See `examples/zephyr/mcp_server/README.md` for details.
 
 ### Test with curl (Linux and Zephyr)
-
-Use these requests against either:
-
-- Linux: <http://localhost:8080>
-- Zephyr: http://DEVICE_IP:8080 (replace DEVICE_IP with the IP printed by the device)
 
 ```bash
 # Initialize the session and get capabilities/protocol version
@@ -89,7 +82,7 @@ curl -s -X POST http://HOST:8080 -H 'Content-Type: application/json' \
   -d '{"jsonrpc":"2.0","id":"3","method":"tools/call","params":{"name":"echo","arguments":{"text":"hi"}}}'
 ```
 
-Replace HOST with localhost (Linux) or the Zephyr device IP.
+Replace HOST with `localhost` (Linux/native_sim) or the Zephyr device IP (ESP32).
 
 ## Transports
 

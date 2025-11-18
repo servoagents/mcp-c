@@ -11,3 +11,14 @@ examples/zephyr/mcp_server/modules/
 examples/zephyr/mcp_server/tools/
 examples/zephyr/mcp_server/zephyr/
 examples/zephyr/mcp_server/.west/
+
+# Jekyll site output & caches
+docs/_site/
+docs/.jekyll-cache/
+_site/
+.jekyll-cache/
+.sass-cache/
+vendor/bundle/
+
+# OS/editor cruft
+.DS_Store

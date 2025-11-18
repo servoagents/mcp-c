@@ -22,6 +22,8 @@ Currently, the HTTP transport:
 - Accepts HTTP/1.1 POSTs and treats the body as JSON-RPC (path not enforced; `/` or `/mcp` both work).
 - One request per connection; socket closes after the reply.
 
+You can find more details about the architecture and transport implementations in `docs/architecture.md`.
+
 ## Build
 
 ### Linux
@@ -86,23 +88,16 @@ Replace HOST with `localhost` (Linux/native_sim) or the Zephyr device IP (ESP32)
 
 ## Transports
 
-MCP messages are JSON-RPC over UTF-8. The spec defines two standard transports:
+All transports conform to the same minimal interface (`mcp_transport_t`: init, poll, send, close). Current and planned support:
 
-- stdio: client launches the server as a subprocess and exchanges JSON-RPC lines over stdin/stdout.
-- Streamable HTTP: server handles HTTP POSTs for client-to-server messages and can stream server messages using Server‑Sent Events (SSE) over GET or POST responses.
+| Transport | Status      | Notes |
+|-----------|-------------|-------|
+| HTTP      | Implemented | Simple POST -> JSON-RPC, one request per connection (no SSE yet) |
+| MQTT      | Planned     | Topic model (e.g. `mcp/<server>/req`, `mcp/<client>/resp`) for pub/sub edge devices |
+| CoAP      | Planned     | Lightweight UDP for constrained devices; maps JSON-RPC to confirmable/non-confirmable messages |
+| Zenoh     | Planned     | Ultra‑low latency distributed key/value; minimal pub/sub pattern similar to MQTT |
 
-This repo implements a basic HTTP POST handler only (single JSON response per request). SSE streaming, resumability, and stdio transport are future work.
-
-Security considerations when exposing HTTP:
-
-- Validate the Origin header to mitigate DNS rebinding.
-- Prefer binding to 127.0.0.1 for local development; add authentication/TLS before exposing beyond localhost.
-
-## Features
-
-- JSON-RPC 2.0 request handling (initialize, tools/list, tools/call via handlers)
-- Pluggable transports (HTTP included)
-- Linux and Zephyr example apps
+Spec reference (MCP): defines stdio and streamable HTTP (with optional SSE). This implementation currently covers only the POST portion of HTTP. Future work: SSE streaming, stdio transport, and the planned protocols above.
 
 ## Library API (quick look)
 
@@ -119,3 +114,32 @@ Handlers must fill `resp_buf` with a valid JSON-RPC response object.
 - HTTP only; no TLS yet. Additional transports (CoAP, MQTT-SN) and TLS could be added by implementing `mcp_transport_t`.
 - The HTTP transport currently accepts any URL path and processes one request per connection.
 - Responses currently hardcode `id` in examples; adapt to use the request `id` in real code.
+
+## Documentation
+
+Rendered docs ([Just the Docs](https://just-the-docs.com/) theme): <https://servoagents.github.io/mcp-c/>
+
+Preview locally:
+
+```bash
+docker run --rm -it -p 4000:4000 -v "$PWD/docs":/site -w /site ruby:3.2 bash -lc 'gem install bundler && bundle install && bundle exec jekyll serve -H 0.0.0.0'
+```
+
+Then open <http://localhost:4000/mcp-c/>
+
+## Contribute
+
+Contributions are welcome.
+
+If unsure about a direction (e.g. new transport), open an issue first for alignment.
+
+1. Fork the repository and create a feature branch: `git checkout -b feature/xyz`.
+2. Build and run examples (Linux and/or Zephyr) to validate changes.
+3. Keep changes minimal; avoid introducing heavy dependencies. Keep transports small.
+4. Follow existing C style (see `.clang-format`).
+5. Add/update documentation in `docs/` if you change public behavior.
+6. Open a PR describing rationale, testing steps, and any limitations.
+
+## License
+
+MIT License – see [`LICENSE.txt`](LICENSE.txt).

@@ -1,0 +1,47 @@
+author: servoagents
+github_username: servoagents
+title: MCP-C Documentation
+description: Tiny, portable C MCP-style JSON-RPC server with pluggable transports
+baseurl: "/mcp-c"
+url: "https://servoagents.github.io"
+repository: servoagents/mcp-c
+
+# Use Just the Docs via remote theme (GitHub Pages compatible)
+remote_theme: just-the-docs/just-the-docs
+search_enabled: true
+color_scheme: dark
+
+plugins:
+  - jekyll-remote-theme
+
+markdown: kramdown
+highlighter: rouge
+
+kramdown:
+  input: GFM
+  syntax_highlighter: rouge
+  syntax_highlighter_opts:
+    css_class: 'highlight'
+
+# Auxiliary links (appear top-right)
+aux_links:
+  "GitHub Repo":
+    - "https://github.com/servoagents/mcp-c"
+
+# Footer content
+footer_content: "&copy; 2025 servoagents. Licensed under the MIT License (see LICENSE.txt on GitHub)."
+
+# Exclusions (keep build lean)
+exclude:
+  - Gemfile
+  - Gemfile.lock
+  - node_modules
+  - vendor
+  - .jekyll-cache
+
+# Defaults – ensure pages use theme layout
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: default

@@ -5,7 +5,8 @@ nav_order: 1
 permalink: /
 ---
 
-Welcome to the MCP-C documentation. MCP-C is a tiny, portable C implementation of an MCP-style JSON-RPC server with pluggable transports.
+Welcome to the MCP-C documentation. MCP-C is a small portable implementation of
+the stateless MCP `2026-07-28` server core with pluggable transports.
 
 ### Quick Start
 
@@ -15,20 +16,23 @@ Use the repository README as the primary getting-started guide:
 
 ### Core
 
-* **Core** – JSON-RPC parsing & session management
-* **Transport** – Minimal interface (`mcp_transport_t`) for protocol adaptation
-* **Server** – Registers handlers (initialize, tools/list, tools/call) and dispatches via `mcp_server_dispatch()`
+* **Core** – bounded JSON-RPC parsing and response writing
+* **Transport** – independent bounded-poll instances over one tool registry
+* **Server** – built-in `server/discover`, `tools/list`, and `tools/call`
 
 ### Key Pages
 
 * [Architecture](architecture.md)
 * [Transports Overview](transports/README.md)
   * [HTTP Transport](transports/http.md)
-  * MQTT (planned)
+  * [CoAP](transports/coap.md)
+  * [MQTT 5](transports/mqtt.md)
+* [Benchmarks and network impairment](benchmarking.md)
 
 ### Platforms
 
-Linux and Zephyr (ESP32, native_sim) supported; other embedded ports are straightforward if they provide sockets or an event API.
+Linux and Zephyr/ESP32 are supported. CoAP currently uses the POSIX libcoap
+adapter; the MQTT binding core is portable and awaits native platform adapters.
 
 ### License
 

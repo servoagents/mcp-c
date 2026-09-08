@@ -1,145 +1,133 @@
 # mcp-c
 
-A tiny, portable C implementation of an MCP-style JSON-RPC server with a pluggable transport interface. It includes:
+`mcp-c` is a small, transport-neutral C server for MCP protocol revision
+`2026-07-28`. It targets POSIX and Zephyr/ESP32 and keeps the request hot path
+bounded and allocation-free inside the semantic core.
 
-- Core server with handler registry and minimal JSON field extraction
-- HTTP transport using BSD sockets
-- Examples for Linux and Zephyr
+Implemented MCP methods:
 
-This project is part of a broader effort to explore AI agents for IoT/IIoT and robotics (edge devices like ESP32 running Zephyr), so it's a learning/reference implementation for embedded targets. It focuses on a minimal subset sufficient to test with external clients. Not production-ready.
+- `server/discover`
+- `tools/list`
+- `tools/call`
 
-## Overview
+The 2026 revision is stateless: there is no `initialize` handshake, protocol
+session, or `Mcp-Session-Id`. Every request carries its version and client
+capabilities in `params._meta`.
 
-This library cleanly separates JSON-RPC protocol logic from networking so it runs on Linux and Zephyr with minimal changes:
+## Build and run
 
-- Core: minimal JSON-RPC parsing (extracts only "id" and "method").
-- Transport: pluggable `mcp_transport_t` (init, poll, send, close) driven by a simple loop.
-- Server: tiny handler registry (e.g., "initialize", "tools/list", "tools/call"), dispatches requests and writes responses via the transport.
-
-Currently, the HTTP transport:
-
-- Listens on TCP port 8080 (override with `MCP_HTTP_PORT`).
-- Accepts HTTP/1.1 POSTs and treats the body as JSON-RPC (path not enforced; `/` or `/mcp` both work).
-- One request per connection; socket closes after the reply.
-
-You can find more details about the architecture and transport implementations in `docs/architecture.md`.
-
-## Build
-
-### Linux
-
-Requirements: CMake and a C compiler
+Requirements: CMake, Ninja or Make, and a C99 compiler. libcoap is detected
+automatically; without it, HTTP and stdio still build.
 
 ```bash
-mkdir -p build && cd build
-cmake .. -DMCP_ENABLE_EXAMPLES=ON
-cmake --build . --config Release
-./examples/linux/mcp_server/mcp-linux-mcp_server
+make                  # one-command build
+./scripts/run.sh      # one-command build + HTTP run
 ```
 
-The server listens on <http://0.0.0.0:8080>. See “Test with curl (Linux and Zephyr)” below.
-
-### Zephyr
-
-#### ESP32 (WiFi)
+The default endpoint is <http://127.0.0.1:8080/mcp>. Run HTTP and CoAP
+together with:
 
 ```bash
-# Setup
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-
-# Build and flash
-./scripts/build-zephyr.sh --init
-./scripts/build-zephyr.sh -b esp32_devkitc/esp32/procpu --wifi-ssid "SSID" --wifi-pass "PASS"
-cd examples/zephyr/mcp_server
-west flash && west espressif monitor
+./scripts/run.sh --transport all
 ```
 
-#### native_sim (Local Testing)
+Run all reproducible checks, including ASan/UBSan and local HTTP/CoAP
+integration:
 
 ```bash
-# Build and run
-./scripts/build-zephyr.sh -b native_sim
-./examples/zephyr/mcp_server/build/zephyr/zephyr.exe
+make prove
 ```
 
-Uses localhost:8080 with native offloaded sockets.
+The proof command writes a machine-readable artifact to
+`build-proof/proof.json` containing the test status, binary size, and SHA-256.
+Generate repeatable HTTP/CoAP latency and size measurements with
+`make benchmark`; the CSV is written to `build-benchmark/results.csv`.
 
-See `examples/zephyr/mcp_server/README.md` for details.
-
-### Test with curl (Linux and Zephyr)
+## Try it
 
 ```bash
-# Initialize the session and get capabilities/protocol version
-curl -s -X POST http://HOST:8080 -H 'Content-Type: application/json' \
-  -d '{"jsonrpc":"2.0","id":"1","method":"initialize","params":{}}'
-
-# List available tools exposed by the server
-curl -s -X POST http://HOST:8080 -H 'Content-Type: application/json' \
-  -d '{"jsonrpc":"2.0","id":"2","method":"tools/list","params":{}}'
-
-# Call the "echo" tool; this demo returns a fixed greeting
-curl -s -X POST http://HOST:8080 -H 'Content-Type: application/json' \
-  -d '{"jsonrpc":"2.0","id":"3","method":"tools/call","params":{"name":"echo","arguments":{"text":"hi"}}}'
+curl http://127.0.0.1:8080/mcp \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -H 'MCP-Protocol-Version: 2026-07-28' \
+  -H 'Mcp-Method: server/discover' \
+  --data-binary '{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}}}'
 ```
 
-Replace HOST with `localhost` (Linux/native_sim) or the Zephyr device IP (ESP32).
+The Linux and Zephyr examples register the same tools: `echo`,
+`sensor.read_temperature`, `servo.set_angle`, and `servo.get_angle`. On Linux
+and `native_sim` the servo is deterministic simulated state. The ESP32 build
+uses LEDC PWM on GPIO18 with a 20 ms period and a bounded 0–180 degree input.
 
-## Transports
+## ESP32
 
-All transports conform to the same minimal interface (`mcp_transport_t`: init, poll, send, close). Current and planned support:
-
-| Transport | Status      | Notes |
-|-----------|-------------|-------|
-| HTTP      | Implemented | Simple POST -> JSON-RPC, one request per connection (no SSE yet) |
-| MQTT      | Planned     | Topic model (e.g. `mcp/<server>/req`, `mcp/<client>/resp`) for pub/sub edge devices |
-| CoAP      | Planned     | Lightweight UDP for constrained devices; maps JSON-RPC to confirmable/non-confirmable messages |
-| Zenoh     | Planned     | Ultra‑low latency distributed key/value; minimal pub/sub pattern similar to MQTT |
-
-Spec reference (MCP): defines stdio and streamable HTTP (with optional SSE). This implementation currently covers only the POST portion of HTTP. Future work: SSE streaming, stdio transport, and the planned protocols above.
-
-## Library API (quick look)
-
-- `mcp_server_init`, `mcp_server_run`, `mcp_server_register`
-- `mcp_transport_http()` returns the HTTP transport
-- Handlers have signature:
-  `int handler(mcp_session_t *session, const mcp_message_t *req, char *resp_buf, size_t resp_buf_sz)`
-
-Handlers must fill `resp_buf` with a valid JSON-RPC response object.
-
-## Notes and Limitations
-
-- Minimal JSON field extraction (id/method) to keep footprint small; no full JSON parsing of params.
-- HTTP only; no TLS yet. Additional transports (CoAP, MQTT-SN) and TLS could be added by implementing `mcp_transport_t`.
-- The HTTP transport currently accepts any URL path and processes one request per connection.
-- Responses currently hardcode `id` in examples; adapt to use the request `id` in real code.
-
-## Documentation
-
-Rendered docs ([Just the Docs](https://just-the-docs.com/) theme): <https://servoagents.github.io/mcp-c/>
-
-Preview locally:
+With the Zephyr SDK installed (validated with 0.17.4), the first invocation
+creates a local west workspace, checks out pinned Zephyr `v4.3.0`, and installs
+the Python dependencies. Build and flash in one command without storing Wi-Fi
+credentials in Git:
 
 ```bash
-docker run --rm -it -p 4000:4000 -v "$PWD/docs":/site -w /site ruby:3.2 bash -lc 'gem install bundler && bundle install && bundle exec jekyll serve -H 0.0.0.0'
+WIFI_SSID='your-network' WIFI_PASS='your-password' \
+  ./scripts/build-zephyr.sh --flash
 ```
 
-Then open <http://localhost:4000/mcp-c/>
+Add `--monitor` to keep the serial console open. The log prints the assigned IP
+and MCP URL. Connect the servo signal to GPIO18 and use a suitable external 5 V
+supply with a common ground; do not power a servo motor from the ESP32's 3.3 V
+pin.
 
-## Contribute
+After flashing, reproduce discovery plus a `servo.set_angle`/`get_angle`
+round-trip (the script restores 90 degrees) and write an ESP32 proof artifact:
 
-Contributions are welcome.
+```bash
+MCP_DEVICE_IP=192.168.x.x make prove-esp32
+```
 
-If unsure about a direction (e.g. new transport), open an issue first for alignment.
+## Architecture
 
-1. Fork the repository and create a feature branch: `git checkout -b feature/xyz`.
-2. Build and run examples (Linux and/or Zephyr) to validate changes.
-3. Keep changes minimal; avoid introducing heavy dependencies. Keep transports small.
-4. Follow existing C style (see `.clang-format`).
-5. Add/update documentation in `docs/` if you change public behavior.
-6. Open a PR describing rationale, testing steps, and any limitations.
+```text
+application tools
+      ↓
+MCP 2026-07-28 semantic core + bounded JSON
+      ↓
+HTTP transport | stdio transport | CoAP adapter | MQTT 5 binding
+      ↓
+BSD/Zephyr sockets | libcoap | Zephyr MQTT adapter
+      ↓
+optional TLS/DTLS provider
+```
+
+`mcp_server_handle()` accepts one complete JSON-RPC message and returns one
+complete response. `mcp_request_ctx_t` carries only opaque per-exchange data;
+the core contains no sockets, CoAP tokens, MQTT topics, or broker handles.
+Multiple bounded-poll transports may serve one registry in the same loop.
+
+JSON is tokenized by a pinned MIT-licensed `jsmn` copy. IDs remain strings or
+integers exactly as received. The bounded writer escapes application text and
+fails closed on overflow. Limits such as `MCP_MAX_JSON_TOKENS`,
+`MCP_MAX_TOOLS`, request size, response size, and MQTT replay-cache size are
+configurable.
+
+## Transport status
+
+| Binding | Status | Notes |
+|---|---|---|
+| Streamable HTTP POST | Implemented | Standard MCP endpoint and 2026 routing headers; JSON responses only |
+| stdio | Implemented | Standard newline-delimited MCP messages |
+| CoAP | Experimental | Custom `POST /mcp`, exact MCP JSON payload, libcoap Block1/Block2 and CoRE discovery |
+| MQTT 5 | Binding implemented | Custom namespace, Response Topic/Correlation Data policy, expiry and QoS 1 replay suppression; network adapter remains platform-specific |
+
+HTTP SSE responses, `subscriptions/listen`, authorization, DTLS/TLS
+configuration, and multi-round-trip `input_required` results are not yet
+implemented. CoAP and MQTT are custom IoT bindings, not standard MCP
+transports. See [the architecture notes](docs/architecture.md) and the
+[transport documents](docs/transports/README.md) for precise behavior.
+
+The implementation tracks the official
+[MCP 2026-07-28 specification](https://modelcontextprotocol.io/specification/2026-07-28)
+and its [Streamable HTTP binding](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http).
 
 ## License
 
-MIT License – see [`LICENSE.txt`](LICENSE.txt).
+MIT. The optional external libcoap dependency is BSD-2-Clause; `jsmn` retains
+its MIT license under `third_party/jsmn/`.

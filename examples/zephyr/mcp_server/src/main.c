@@ -1,130 +1,86 @@
+#include "demo_tools.h"
+#include "mcp_transport.h"
+#include "servo_backend.h"
+#include "wifi.h"
+
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
-
-#include "mcp_server.h"
-#include "mcp_transport.h"
-#include "mcp.h"
-#include "wifi.h"
-#include <zephyr/net/net_ip.h>
 #include <zephyr/net/net_if.h>
+#include <zephyr/net/net_ip.h>
 #include <zephyr/net/net_mgmt.h>
 
 LOG_MODULE_REGISTER(mcp_zephyr_app, LOG_LEVEL_INF);
 
+#ifdef CONFIG_BOARD_NATIVE_SIM
+#define MCP_ZEPHYR_SERVER_NAME "mcp-c-native-sim"
+#define MCP_ZEPHYR_INSTRUCTIONS "Control a simulated servo and inspect its commanded angle."
+#else
+#define MCP_ZEPHYR_SERVER_NAME "mcp-c-esp32"
+#define MCP_ZEPHYR_INSTRUCTIONS "Control the ESP32 servo on GPIO18 and inspect its commanded angle."
+#endif
+
 #ifdef CONFIG_WIFI
-/* IPv4 address event-based logger */
 static struct net_mgmt_event_callback ipv4_cb;
 
-static void ipv4_event_handler(struct net_mgmt_event_callback *cb, uint64_t event,
+static void log_ipv4(struct net_if *iface) {
+    struct in_addr *address = net_if_ipv4_get_global_addr(iface, NET_ADDR_PREFERRED);
+    if (address && address->s_addr != 0) {
+        char text[NET_IPV4_ADDR_LEN];
+        net_addr_ntop(AF_INET, address, text, sizeof(text));
+        LOG_INF("MCP endpoint: http://%s:8080/mcp", text);
+    }
+}
+
+static void ipv4_event_handler(struct net_mgmt_event_callback *callback, uint64_t event,
                                struct net_if *iface) {
-    ARG_UNUSED(cb);
-    if (event != NET_EVENT_IPV4_ADDR_ADD) {
-        return;
-    }
-    struct in_addr *addr = net_if_ipv4_get_global_addr(iface, NET_ADDR_PREFERRED);
-    if (addr && addr->s_addr != 0) {
-        char ipbuf[NET_IPV4_ADDR_LEN];
-        net_addr_ntop(AF_INET, addr, ipbuf, sizeof(ipbuf));
-        LOG_INF("WiFi IPv4 address: %s", ipbuf);
-    }
+    ARG_UNUSED(callback);
+    if (event == NET_EVENT_IPV4_ADDR_ADD) log_ipv4(iface);
 }
 #endif
-
-static int handle_initialize(struct mcp_session *s, const mcp_message_t *req, char *resp,
-                             size_t cap) {
-    ARG_UNUSED(s);
-    const char *id = (req && req->id) ? req->id : "1";
-    snprintk(resp, cap,
-             "{\"jsonrpc\":\"2.0\",\"id\":\"%s\",\"result\":{\"capabilities\":{\"tools\":true,"
-             "\"resources\":true},\"protocolVersion\":\"1.0\"}}",
-             id);
-    return 0;
-}
-
-static int handle_tools_list(struct mcp_session *s, const mcp_message_t *req, char *resp,
-                             size_t cap) {
-    ARG_UNUSED(s);
-    const char *id = (req && req->id) ? req->id : "1";
-    const char *result = "{\"tools\":[{\"name\":\"echo\",\"description\":\"Echo "
-                         "text\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"text\":{"
-                         "\"type\":\"string\"}},\"required\":[\"text\"]}}]}";
-    snprintk(resp, cap, "{\"jsonrpc\":\"2.0\",\"id\":\"%s\",\"result\":%s}", id, result);
-    return 0;
-}
-
-static int handle_tools_call(struct mcp_session *s, const mcp_message_t *req, char *resp,
-                             size_t cap) {
-    ARG_UNUSED(s);
-    const char *id = (req && req->id) ? req->id : "1";
-    const char *out = "Hello from Zephyr MCP!";
-    snprintk(resp, cap,
-             "{\"jsonrpc\":\"2.0\",\"id\":\"%s\",\"result\":{\"content\":[{\"type\":\"text\","
-             "\"text\":\"%s\"}]}}",
-             id, out);
-    return 0;
-}
 
 int main(void) {
-    LOG_INF("Starting MCP Zephyr app (HTTP :8080)");
+    mcp_server_config_t server_config = {
+        .name = MCP_ZEPHYR_SERVER_NAME,
+        .version = MCP_VERSION,
+        .instructions = MCP_ZEPHYR_INSTRUCTIONS,
+        .max_request_size = 4096,
+    };
+    mcp_http_config_t http_config = {
+        .bind_address = "0.0.0.0",
+        .port = 8080,
+        .backlog = 4,
+    };
+    mcp_server_t *server;
+    mcp_transport_t http;
+    servo_backend_t servo;
 
 #ifdef CONFIG_WIFI
-    /* Initialize and connect WiFi before starting server */
-    (void) wifi_init(NULL);
-    if (connect_to_wifi() < 0) {
-        LOG_ERR("WiFi connect request failed");
+    wifi_init(NULL);
+    if (connect_to_wifi() < 0 || wait_for_wifi_connection() < 0) {
+        LOG_ERR("Wi-Fi connection failed");
         return 0;
     }
-    if (wait_for_wifi_connection() < 0) {
-        LOG_ERR("WiFi did not connect in time");
-        return 0;
-    }
-
-    /* Log IPv4 once DHCP completes using a net_mgmt event callback. */
     net_mgmt_init_event_callback(&ipv4_cb, ipv4_event_handler, NET_EVENT_IPV4_ADDR_ADD);
     net_mgmt_add_event_callback(&ipv4_cb);
-    /* If DHCP already completed, log immediately. */
-    {
-        struct in_addr *addr =
-            net_if_ipv4_get_global_addr(net_if_get_default(), NET_ADDR_PREFERRED);
-        if (addr && addr->s_addr != 0) {
-            char ipbuf[NET_IPV4_ADDR_LEN];
-            net_addr_ntop(AF_INET, addr, ipbuf, sizeof(ipbuf));
-            LOG_INF("WiFi IPv4 address: %s", ipbuf);
-        }
-    }
-#else
-    /* For native_sim, just log the configured IP */
-    LOG_INF("Running on native_sim - network interface ready");
-    struct net_if *iface = net_if_get_default();
-    if (iface) {
-        struct in_addr *addr = net_if_ipv4_get_global_addr(iface, NET_ADDR_PREFERRED);
-        if (addr && addr->s_addr != 0) {
-            char ipbuf[NET_IPV4_ADDR_LEN];
-            net_addr_ntop(AF_INET, addr, ipbuf, sizeof(ipbuf));
-            LOG_INF("IPv4 address: %s", ipbuf);
-        }
-    }
+    log_ipv4(net_if_get_default());
 #endif
 
-    mcp_server_config_t cfg = {
-        .transport = mcp_transport_http(),
-        .transport_cfg = NULL,
-        .max_body = 4096,
-    };
-    mcp_server_t *srv = mcp_server_init(&cfg);
-    if (!srv) {
-        LOG_ERR("Failed to init MCP server");
+    if (zephyr_servo_backend_init(&servo) != MCP_OK) return 0;
+    server = mcp_server_init(&server_config);
+    if (server == NULL || demo_register_tools(server, &servo) != MCP_OK) {
+        LOG_ERR("MCP core initialization failed");
         return 0;
     }
-
-    mcp_server_register(srv, "initialize", handle_initialize);
-    mcp_server_register(srv, "tools/list", handle_tools_list);
-    mcp_server_register(srv, "tools/call", handle_tools_call);
-
-    mcp_server_run(srv);
-    mcp_server_deinit(srv);
-#ifdef CONFIG_WIFI
-    wifi_disconnect();
-#endif
+    if (mcp_http_transport_init(&http, &http_config) != MCP_OK ||
+        mcp_transport_open(&http, server) != MCP_OK) {
+        LOG_ERR("MCP HTTP transport initialization failed");
+        mcp_server_deinit(server);
+        return 0;
+    }
+    LOG_INF("MCP %s ready; servo backend: %s", MCP_PROTOCOL_VERSION,
+            zephyr_servo_backend_is_hardware() ? "PWM hardware" : "simulated");
+    while (mcp_transport_poll(&http, 250) == MCP_OK) {}
+    mcp_transport_close(&http);
+    mcp_server_deinit(server);
     return 0;
 }

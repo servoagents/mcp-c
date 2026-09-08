@@ -4,3 +4,4 @@ intelhex>=2.3
 pyserial>=3.5
 pyelftools>=0.32
 PyYAML>=6.0.3
+esptool>=5.0.2

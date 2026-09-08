@@ -1,4 +1,40 @@
-/* Enable Wi‑Fi peripheral on ESP32 */
+#include <zephyr/dt-bindings/pwm/pwm.h>
+
+/ {
+	aliases {
+		servo-pwm = &servo_pwm;
+	};
+
+	pwmleds {
+		compatible = "pwm-leds";
+		servo_pwm: servo_pwm_gpio18 {
+			label = "MCP servo PWM on GPIO18";
+			pwms = <&ledc0 0 PWM_MSEC(20) PWM_POLARITY_NORMAL>;
+		};
+	};
+};
+
+&pinctrl {
+	ledc0_default: ledc0_default {
+		group1 {
+			pinmux = <LEDC_CH0_GPIO18>;
+			output-enable;
+		};
+	};
+};
+
+&ledc0 {
+	pinctrl-0 = <&ledc0_default>;
+	pinctrl-names = "default";
+	status = "okay";
+	#address-cells = <1>;
+	#size-cells = <0>;
+	channel0@0 {
+		reg = <0x0>;
+		timer = <0>;
+	};
+};
+
 &wifi {
 	status = "okay";
 };

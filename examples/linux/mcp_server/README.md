@@ -1,16 +1,17 @@
-# MCP Linux Example
+# MCP Linux example
 
-A minimal MCP HTTP server running on Linux that reuses the shared mcp library.
-
-Build (from `mcp/`):
+From the repository root, build and run the HTTP server with one command:
 
 ```bash
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j
+./scripts/run.sh
 ```
 
-Run:
+The endpoint is `http://127.0.0.1:8080/mcp`. To run every available local
+transport against the same tool registry:
 
 ```bash
-./build/examples/linux/mcp_server/mcp-linux-mcp_server
+./scripts/run.sh --transport all
 ```
+
+Modes are `http`, `stdio`, `coap`, and `all`; CoAP is present when libcoap was
+detected. See the repository README for a complete `server/discover` request.

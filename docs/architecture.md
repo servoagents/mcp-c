@@ -4,49 +4,60 @@ title: Architecture
 nav_order: 2
 ---
 
-MCP-C separates protocol logic from networking so the same JSON-RPC core runs on Linux and constrained platforms (Zephyr, ESP32) with minimal changes.
+# Architecture
 
-The system is intentionally small: the core parses and dispatches JSON-RPC, while transports carry raw payloads and map replies back to clients. Transports implement a compact interface and may be written as polling drivers or using async callbacks.
-
-## Components
+The semantic boundary is one complete MCP JSON-RPC message in and zero or one
+complete JSON-RPC response out:
 
 ```text
-Application  <-- JSON-RPC -->  MCP Server Core  <-- mcp_transport_t -->  Transport Layer
+tool callbacks
+    ↓
+server/discover · tools/list · tools/call
+    ↓
+message parser · bounded JSON writer · tool registry
+    ↓
+mcp_server_handle(server, request_context, request, response)
+    ↓
+HTTP · stdio · CoAP · MQTT 5 binding
+    ↓
+sockets · libcoap · platform MQTT library
+    ↓
+TLS/DTLS provider · network
 ```
 
-- MCP Server Core: handler registry, dispatch, session management
-- Transport Layer: pluggable (HTTP implemented; MQTT, Zenohr and CoAP planned)
+The core owns no transport. `mcp_request_ctx_t.transport_context` is opaque and
+valid only for the exchange. Transport-specific concepts therefore stay at the
+edge: file descriptors in HTTP, CoAP session/token state in libcoap, and MQTT
+topics/correlation properties in an MQTT adapter.
 
-Key locations:
+## Core lifecycle
 
-- `src/server/` — server core
-- `src/core/` — message parsing and sessions
-- `src/transport/` — transports
+1. Initialize a server with immutable identity and bounded request limits.
+2. Register tool definitions and callbacks in deterministic order.
+3. Initialize any number of transport instances.
+4. Open each transport against the same server and call its bounded `poll()`.
+5. Close transports, then destroy the server.
 
-## Transport Interface
+The 2026 protocol is stateless. A tool can maintain explicit application state
+(the servo's commanded angle, for example), but the server never infers client
+identity, capabilities, or protocol version from a previous request.
 
-Transports implement a compact contract (`include/mcp_transport.h`): init, poll, send, close.
+## JSON and memory
 
-```c
-typedef struct mcp_transport {
-    const char *name;
-    int (*init)(struct mcp_server *srv, void *cfg);
-    int (*poll)(struct mcp_server *srv);
-    int (*send)(struct mcp_session *s, const uint8_t *data, size_t len);
-    void (*close)(struct mcp_server *srv);
-} mcp_transport_t;
-```
+The parser uses fixed stack token arrays with `MCP_MAX_JSON_TOKENS`. Parsed
+values are non-owning spans into the request and stay valid only during the
+call. No DOM is built. The writer tracks object/array structure and escapes
+strings into a caller-supplied bounded response buffer.
 
-`poll()` is the integration point. Two simple patterns:
+The server object and transport buffers allocate during initialization. The
+semantic request path performs no allocation. libcoap owns CoAP reassembly and
+large-response lifetime; the MQTT replay cache allocates all slots at startup.
 
-- Polling/pump: call the library pump inside `poll()`; when you have a full payload call `mcp_server_dispatch(srv, sess, buf, len)`.
-- Callback/async: register network callbacks. If they run in the server thread they may call `mcp_server_dispatch()` directly. If they run off‑thread, enqueue payloads and drain them in `poll()` (preferred on embedded).
+## Security layer
 
-**Threading note**: the MCP core is single‑threaded. Do not call core APIs from arbitrary threads; either protect access or defer to `poll()`.
-
-Request flow (compact): receive bytes → deliver buffer to core → parse & dispatch → send response via `transport->send()`.
-
-## Extending the Project
-
-- Add transport sources under `src/transport/` and expose factories as needed.
-- Add a CMake option (e.g., `MCP_ENABLE_X=ON`) and conditionally compile the transport.
+Cryptography belongs under transports. The normal Zephyr secure-socket/Mbed TLS
+path remains the classical baseline. A future PQC profile should use external
+wolfSSL (not vendored) and compare X25519 with `X25519MLKEM768` while keeping
+ordinary certificate authentication constant. CoAP should use libcoap's
+wolfSSL DTLS backend. No MCP message or MQTT/CoAP binding changes are needed to
+add those profiles.

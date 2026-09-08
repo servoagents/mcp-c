@@ -1,0 +1,32 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  host-proof:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build and transport dependencies
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libcoap3-dev libcoap3-bin
+      - name: Build, integration-test, and sanitize
+        run: make prove
+      - name: Upload machine-readable proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: mcp-c-proof
+          path: build-proof/proof.json
+
+  clang-build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure and test with Clang
+        env:
+          CC: clang
+        run: |
+          cmake -S . -B build-clang -G Ninja -DMCP_ENABLE_COAP=OFF
+          cmake --build build-clang
+          ctest --test-dir build-clang --output-on-failure

@@ -10,11 +10,12 @@ manifest:
     - name: zephyr
       remote: zephyrproject
       repo-path: zephyr
-      revision: v4.2.1
+      revision: v4.3.0
       # Checkout Zephyr under the app folder to avoid name/path collisions
       path: zephyr
       import: true
 
   self:
-    # Place the manifest (this app) under the workspace top at this relative path
-    path: .
+    # The manifest repository already lives here when scripts/build-zephyr.sh
+    # initializes examples/zephyr as the west workspace.
+    path: mcp_server

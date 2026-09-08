@@ -1,32 +1,58 @@
 #ifndef MCP_TRANSPORT_H
 #define MCP_TRANSPORT_H
 
-#include <stddef.h>
-#include <stdint.h>
+#include "mcp_server.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-struct mcp_server;
-struct mcp_session;
+typedef struct mcp_transport mcp_transport_t;
 
-// Transport callbacks
-typedef struct mcp_transport {
+typedef struct {
+    int (*open)(mcp_transport_t *transport, mcp_server_t *server);
+    int (*poll)(mcp_transport_t *transport, int timeout_ms);
+    void (*close)(mcp_transport_t *transport);
+} mcp_transport_vtable_t;
+
+struct mcp_transport {
     const char *name;
-    int (*init)(struct mcp_server *srv, void *cfg);
-    int (*poll)(struct mcp_server *srv); // drive transport; returns 0 to continue, <0 to stop
-    void (*close)(struct mcp_server *srv);
+    const mcp_transport_vtable_t *vtable;
+    mcp_server_t *server;
+    void *state;
+};
 
-    // Send to a session/connection
-    int (*send)(struct mcp_session *s, const uint8_t *data, size_t len);
-} mcp_transport_t;
+int mcp_transport_open(mcp_transport_t *transport, mcp_server_t *server);
+int mcp_transport_poll(mcp_transport_t *transport, int timeout_ms);
+void mcp_transport_close(mcp_transport_t *transport);
 
-// HTTP transport factory
-const mcp_transport_t *mcp_transport_http(void);
+typedef struct {
+    const char *bind_address;
+    uint16_t port;
+    const char *allowed_origin;
+    int backlog;
+} mcp_http_config_t;
+
+int mcp_http_transport_init(mcp_transport_t *transport, const mcp_http_config_t *config);
+
+typedef struct {
+    void *input;
+    void *output;
+} mcp_stdio_config_t;
+
+int mcp_stdio_transport_init(mcp_transport_t *transport, const mcp_stdio_config_t *config);
+
+/* Experimental custom MCP-over-CoAP binding backed by external libcoap. */
+typedef struct {
+    const char *bind_address;
+    uint16_t port;
+    size_t max_response_size;
+} mcp_coap_config_t;
+
+int mcp_coap_transport_init(mcp_transport_t *transport, const mcp_coap_config_t *config);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif // MCP_TRANSPORT_H
+#endif
